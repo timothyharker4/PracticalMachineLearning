@@ -1,0 +1,98 @@
+# Dumbbell Biceps Curl Method Identification
+## By Tim Harker
+
+### Set Up and Introduction
+The goal of this exercise is to create a classification model that is capable of
+identifying the different methods used by the study participants to complete
+repetitions of dumbbell curls. These methods are identified as follows:
+
+* Class A - According to specification 
+* Class B - Throwing Elbows in Front
+* Class C - Lift Dumbbell Half Way 
+* Class D - Lower Dumbell Half Way 
+* Class E - Throwing Hips to the Front
+
+To accomplished this task, first I must load the two different data sets, the training data and
+the testing data. The testing data does not contain the *classe* variable, which
+identifies what method the subject used to complete the dumbbell curl. It will
+be used after the classification model has been created and the methods will be
+predicted by the model.
+```{r}
+training <- read.csv("pml-training.csv")
+testing <- read.csv("pml-testing.csv")
+```
+
+Once the data is loaded, and because there is no proper testing data that can be
+used to validate that the classification tree will work outside of the training
+sample, the training data will be split in to another training set and a validation
+data set.
+```{r}
+library(caret)
+set.seed(1234)
+inTrain <- createDataPartition(y=training$classe, p = .7, list = FALSE)
+train <- training[inTrain, ]
+validate <- training[-inTrain, ]
+```
+
+### Data Exploration
+
+Before a classification model can be created the training data, I must first get
+a look at what variables are contained within the data. 
+```{r}
+names(train)
+```
+
+In looking at the variable names, many of the columns consist of summary measurements 
+of the raw data collected from the sensors. As result, the data can be reduced 
+down to only the raw pitch, roll, yaw, accel_xyz, gyros_xyz, and magnet_xyz variables 
+tied to each of the four sensors. This also ends up excluding all of the columns
+that contain NA values.
+```{r}
+reducedTrain <- train[ , grepl("^roll|^pitch|^yaw|^gyros|^accel|^magnet|classe", names(training))]
+reducedValidate <- validate[ , grepl("^roll|^pitch|^yaw|^gyros|^accel|^magnet|classe", names(training))]
+reducedTesting <- testing[ , grepl("^roll|^pitch|^yaw|^gyros|^accel|^magnet", names(testing))]
+```
+
+With the data sets reduced to a minimum number of variables, the classification
+model can now be created.
+
+### Classification Model Creation
+
+When it comes to attempting to classify data observations, a random forest model
+is a great method to use, and so I will do so. Using the train portion of my data,
+I trained a random forest model using 5 fold cross validation and then performed
+one last cross validation after the model had been created by predicting the *classe*
+values in my validation data set. The results of this last cross validation are
+seen in the confusion matrix below.
+```{r}
+set.seed(159)
+rfFit <- train(classe ~ ., method = "rf", trControl = trainControl(method="cv", number = 5), data = reducedTrain)
+```
+
+### Model Summary
+
+With the model created, the first measurement I want to take is how well the model
+will classify exercises outside of the sample used for its creation. Using the 
+modifed validation data *reducedValidate* and the newly created model, I can compare
+what the model predicts the observations to me versus what the actual observations
+are.
+```{r}
+rfvalidate <- predict(rfFit, reducedValidate)
+confusionMatrix(rfvalidate, reducedValidate$classe)
+```
+
+As seen in the summary statistics above, the model had an accuracy of 99.39% on
+the validation data, which corresponds to a 0.61% out-of-sample error rate.
+
+The last element of the model that I want to inspect is the importance of the
+individual variables used in the creation of the classification model. The top 20
+are listed below:
+```{r}
+varImp(rfFit)
+```
+
+As can be seen in the list, generally speaking, measurements related to the change 
+in orientation (yaw, roll, pitch, magnet) of the forearm, belt, and dumbbell ended 
+up being the most important factors in identifying each biceps curl method. 
+Intuitively, this would make sense as the upper arm tends to be mostly stationary
+when doing biceps curls, so its movements would not differ much between each method.
